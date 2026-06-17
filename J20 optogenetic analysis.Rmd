@@ -1,0 +1,730 @@
+---
+title: "J20 optogenetic data"
+output: html_notebook
+---
+Libraries
+```{r}
+library(lme4)       #mixed models
+library(lmerTest)   #mixed models
+library(ggplot2)    #plot graphs
+library(ggpubr)     #edit graphs with theme() 
+library(tidyverse)  #set of packages which include dplyr and tidyr
+library(foreign)    #read in SPSS files
+library(sjPlot)     #make forest plots and nice tables from lme
+library(flextable)  #makes nice tables
+library(svglite)    #expo grobs as SVG files
+```
+Set working directory and load in df
+```{r}
+#set working directory
+setwd("~/Library/CloudStorage/Dropbox/Manuscripts/ATN to RSC J20/J20 data/R scripts")
+
+#read in SPSS file to data frame
+ATN_input<-read.spss("J20.sav", use.value.label=TRUE, to.data.frame=TRUE)
+
+#filter out interneurons
+ATN_pyr<-ATN_input%>%
+  filter(Celltype == 'Pyramidal') 
+```
+
+```{r}
+# Colour palette define
+GenotypeColour <- c(
+  "Tg" = "#EA2376",
+  "WT" = "#6D47B4"
+)
+
+```
+
+EPSC magnitude mixed model analysis
+```{r}
+#null model
+EPSC.null<- lmer(Amplitude_7Hz ~ (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+summary(EPSC.null)
+
+#model 1 area, layer
+EPSC.mem.1 <- lmer(Amplitude_7Hz ~ Area + Layer + (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+  summary(EPSC.mem.1)
+
+#model 2 area, layer, age, genotype
+EPSC.mem.2<- lmer(Amplitude_7Hz ~ Area + Layer + Age + Genotype + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE)
+  summary(EPSC.mem.2)
+
+#model 3 area, layer, age, genotype, sex
+  EPSC.mem.3<- lmer(Amplitude_7Hz ~ Area + Layer + Age + Genotype + Sex + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE) 
+  summary(EPSC.mem.3)
+
+  
+#Anova to compare null and experimental models  
+#if( require("xtable") ){
+#  ft1 <- xtable_to_flextable(xtable(anova(EPSC.mem.1, EPSC.mem.2, EPSC.mem.3, EPSC.null), hline.after = c(1)))%>%
+ #   set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+  #  add_header_lines(values="ANOVA model comparison")%>%
+   # colformat_double(j=9, digits=3)
+  #ft1   
+#}
+  
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model 1
+#if( require("xtable") ){
+ #  ft2 <- xtable_to_flextable(xtable(anova(EPSC.mem.1, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model 3
+#if( require("xtable") ){
+#   ft2 <- xtable_to_flextable(xtable(anova(EPSC.mem.3, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+
+#create predictor label list
+predictor_labels_table<- list("Area: gRSC","Layer: Deep")
+predictor_labels<- list("Layer: Deep", "Area: gRSC" )
+
+#forest plot Amplitude_7Hz effect sizes
+sjPlot:: plot_model(EPSC.mem.3, 
+                   # axis.labels=c(predictor_labels),
+                   show.values=TRUE,
+                   show.p=TRUE, 
+                   title="Effect of predictors on EPSC magnitude",
+                   vline.color="black")+
+                   theme_classic2()
+
+#create formatted table of effect sizes
+EPSC.table.1<-
+sjPlot:: tab_model(EPSC.mem.1,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="EPSC magnitude")
+EPSC.table.2<-
+sjPlot:: tab_model(EPSC.mem.2,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="EPSC magnitude")
+EPSC.table.3<-
+  sjPlot:: tab_model(EPSC.mem.3,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="EPSC magnitude")
+
+#combine mem tables
+tab_model(EPSC.mem.1,EPSC.mem.2,EPSC.mem.3,
+          pred.labels = c("Intercept", "Area: gRSC", "Layer: Deep","Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+
+#plot Amplitude_7Hz data box plots
+EPSC.plot<-        
+ATN_pyr%>%
+  ggplot(aes(x=Age, y=Amplitude_7Hz, fill=Genotype))+
+  geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+   geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+    facet_grid(Area ~ Layer, scales="free_x")+
+    labs(y = "EPSC magnitude (pA)", x="Age (months)")+
+    scale_x_discrete(labels=(c("3","6","9")))+
+#    stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+ #add dashed line for mean
+    theme_classic2()+
+    theme(axis.title = element_text(size=12), axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+    theme(legend.title = element_text(size=12), legend.text = element_text(size=12))+
+    theme(strip.text = element_text(size=12))+
+    theme(panel.border=element_rect(color = "gray45", fill = NA, size = 1))
+
+#save as pdf file
+ggsave(file="J20 EPSC boxplot.pdf", plot=EPSC.plot, height=6, width=10)
+```
+Onset time mixed model analysis
+```{r}
+#null model
+Onset.null<- lmer(Onset_7Hz ~ (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+summary(Onset.null)
+
+#model 1 area, layer
+Onset.mem.1 <- lmer(Onset_7Hz ~ Area + Layer + (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+  summary(Onset.mem.1)
+
+#model 2 area, layer, age, genotype
+Onset.mem.2<- lmer(Onset_7Hz ~ Area + Layer + Age + Genotype + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE)
+  summary(Onset.mem.2)
+
+#model 3 area, layer, age, genotype, sex
+  Onset.mem.3<- lmer(Onset_7Hz ~ Area + Layer + Age + Genotype + Sex + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE) 
+  summary(Onset.mem.3)
+  
+#Anova to compare null and experimental models  
+#if( require("xtable") ){
+#  ft1 <- xtable_to_flextable(xtable(anova(Onset.mem.1, Onset.mem.2, Onset.mem.3, Onset.null), hline.after = c(1)))%>%
+#    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+#    add_header_lines(values="ANOVA model comparison")%>%
+#    colformat_double(j=9, digits=3)
+#  ft1   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model 3
+#if( require("xtable") ){
+#   ft2 <- xtable_to_flextable(xtable(anova(Onset.mem.3, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+  
+  #get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#if( require("xtable") ){
+#   ft2 <- xtable_to_flextable(xtable(anova(Onset.mem.1, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+  
+#create predictor label list
+predictor_labels_table<- list("Area: gRSC","Layer: Deep")
+predictor_labels<- list("Layer: Deep", "Area: gRSC" )
+
+#plot Onset_7Hz effect sizes
+sjPlot:: plot_model(Onset.mem.3, 
+                   # axis.labels=c(predictor_labels),
+                   show.values=TRUE,
+                   show.p=TRUE, 
+                   title="Effect of predictors on Onset magnitude",
+                   vline.color="black")+
+                   theme_classic2()
+
+#create formatted table of effect sizes
+Onset.table.1<-
+sjPlot:: tab_model(Onset.mem.1,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Onset magnitude")
+Onset.table.2<-
+sjPlot:: tab_model(Onset.mem.2,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Onset magnitude")
+Onset.table.3<-
+  sjPlot:: tab_model(Onset.mem.3,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Onset magnitude")
+
+#create table of effect sizes for all mem
+tab_model(Onset.mem.1,Onset.mem.2,Onset.mem.3,
+          pred.labels = c("Intercept", "Area: gRSC", "Layer: Deep","Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+
+#plot Onset_7Hz data box plots
+Onset.plot<-        
+ATN_pyr%>%
+  ggplot(aes(x=Age, y=Onset_7Hz, fill=Genotype))+
+  geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+   geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+    facet_grid(Area ~ Layer, scales="free_x")+
+    labs(y = "Time to EPSC onset (ms)", x="Age (months)")+
+    scale_x_discrete(labels=(c("3","6","9")))+
+ #   stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+    theme_classic2()+
+    theme(axis.title = element_text(size=12), axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+    theme(legend.title = element_text(size=12), legend.text = element_text(size=12))+
+    theme(strip.text = element_text(size=12))+
+   theme(panel.border=element_rect(color = "gray45", fill = NA, size = 1))
+
+#save as SVG file
+ggsave(file="J20 onset boxplot.pdf", plot=Onset.plot, height=6, width=10)
+```
+test model 4 of onset time
+```{r}
+#model 4 area, layer, sex
+Onset.mem.4<- lmer(Onset_7Hz ~ Area + Layer + Sex + (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+summary(Onset.mem.4)
+
+  
+#Anova to compare null and experimental models  
+#if( require("xtable") ){
+#  ft1 <- xtable_to_flextable(xtable(anova(Onset.mem.4, Onset.mem.1), hline.after = c(1)))%>%
+#    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+#    add_header_lines(values="ANOVA model comparison")%>%
+#    colformat_double(j=9, digits=3)
+#  ft1   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#if( require("xtable") ){
+#   ft2 <- xtable_to_flextable(xtable(anova(Onset.mem.4, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+
+#Onset.table.3<-
+#  sjPlot:: tab_model(Onset.mem.4,
+#                   show.re.var=TRUE,
+#                   show.stat=TRUE,
+#                   collapse.ci=TRUE,
+#                   # pred.labels=c("Intercept", predictor_labels_table),
+#                   dv.labels="Onset magnitude")
+
+tab_model(Onset.mem.1,Onset.mem.2,Onset.mem.3,Onset.mem.4,
+          pred.labels = c("Intercept", "Area: gRSC", "Layer: Deep","Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3","Model 4"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+```
+
+
+20-80% Rise time mixed model analysis
+```{r}
+#null model
+Rise.null<- lmer(Rise_7Hz ~ (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+summary(Rise.null)
+
+#model 1 area, layer
+Rise.mem.1 <- lmer(Rise_7Hz ~ Area + Layer + (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+  summary(Rise.mem.1)
+
+#model 2 age, genotype (no area or layer as not-significant in model 1)
+Rise.mem.2<- lmer(Rise_7Hz ~ Age + Genotype + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE)
+  summary(Rise.mem.2)
+
+#model 3 area, layer, age, genotype, sex
+  Rise.mem.3<- lmer(Rise_7Hz ~ Age + Genotype + Sex + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE) 
+  summary(Rise.mem.3)
+
+  
+##Anova to compare null and experimental models  
+#if( require("xtable") ){
+#    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+##  ft1 <- xtable_to_flextable(xtable(anova(Rise.mem.1, Rise.null), hline.after = c(1)))%>%
+ #   colformat_double(j=9, digits=3)
+##    add_header_lines(values="ANOVA model comparison")%>%
+#  ft1   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#   ft2 <- xtable_to_flextable(xtable(anova(Rise.mem.1, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#if( require("xtable") ){
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+  
+  #Anova to compare null and experimental models  
+#if( require("xtable") ){
+#  ft1 <- xtable_to_flextable(xtable(anova(Rise.mem.3, Rise.mem.2, Rise.null), hline.after = c(1)))%>%
+#    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+#    add_header_lines(values="ANOVA model comparison")%>%
+#    colformat_double(j=9, digits=3)
+#  ft1   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#if( require("xtable") ){
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+##   ft2 <- xtable_to_flextable(xtable(anova(Rise.mem.2, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+
+  #create predictor label list
+predictor_labels_table<- list("Area: gRSC","Layer: Deep")
+predictor_labels<- list("Layer: Deep", "Area: gRSC" )
+
+#plot Rise_7Hz effect sizes
+sjPlot:: plot_model(Rise.mem.3, 
+                   # axis.labels=c(predictor_labels),
+                   show.values=TRUE,
+                   show.p=TRUE, 
+                   title="Effect of predictors on Rise magnitude",
+                   vline.color="black")+
+                   theme_classic2()
+
+#create formatted table of effect sizes
+Rise.table.1<-
+sjPlot:: tab_model(Rise.mem.1,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Rise magnitude")
+Rise.table.2<-
+sjPlot:: tab_model(Rise.mem.2,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Rise magnitude")
+Rise.table.3<-
+  sjPlot:: tab_model(Rise.mem.3,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Rise magnitude")
+
+tab_model(Rise.mem.1,Rise.mem.2,Rise.mem.3,
+          pred.labels = c("Intercept", "Area: gRSC", "Layer: Deep","Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+
+#plot Rise_7Hz data box plots
+Rise.plot<-        
+ATN_pyr%>%
+  ggplot(aes(x=Age, y=Rise_7Hz, fill=Genotype))+
+    geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+   geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+    facet_grid(Area ~ Layer, scales="free_x")+
+    labs(y = "Rise to EPSC (ms)", x="Age (months)")+
+    scale_x_discrete(labels=(c("3","6","9")))+
+ #   stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+    theme_classic2()+
+    theme(axis.title = element_text(size=12), axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+    theme(legend.title = element_text(size=12), legend.text = element_text(size=12))+
+    theme(strip.text = element_text(size=12))+
+    theme(panel.border=element_rect(color = "gray45", fill = NA, size = 1))
+
+ggsave(file="J20 rise boxplot.pdf", plot=Rise.plot, height=6, width=10)  
+```
+model 4 rise time
+```{r}
+#model 3 area, layer, age, genotype, sex
+Rise.mem.4<- lmer(Rise_7Hz ~ Age + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE) 
+  summary(Rise.mem.4)
+  
+#Anova to compare null and experimental models  
+if( require("xtable") ){
+  ft1 <- xtable_to_flextable(xtable(anova(Rise.mem.4, Rise.null), hline.after = c(1)))%>%
+    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+    add_header_lines(values="ANOVA model comparison")%>%
+    colformat_double(j=9, digits=3)
+  ft1   
+}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+if( require("xtable") ){
+   ft2 <- xtable_to_flextable(xtable(anova(Rise.mem.4, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", "Pr..F."="p value")%>%
+     add_header_lines(values="ANOVA Type III effects")%>%
+     colformat_double(j=7, digits=3)
+ft2   
+}
+
+Rise.table.4<-
+  sjPlot:: tab_model(Rise.mem.3,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="Rise magnitude")
+
+tab_model(Rise.mem.1,Rise.mem.2,Rise.mem.3,Rise.mem.4,
+          pred.labels = c("Intercept", "Area: gRSC", "Layer: Deep","Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3","Model 4"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+```
+
+
+AMPA/NMDA mixed model analysis
+```{r}
+#null model
+AN.null<- lmer(Ratio_AMPA_NMDA ~ (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+summary(AN.null)
+
+#model 1 area, layer
+AN.mem.1 <- lmer(Ratio_AMPA_NMDA ~ Area + Layer + (1 + 1|Mouse), data=ATN_pyr, REML=FALSE)
+  summary(AN.mem.1)
+
+#model 2 area, layer, age, genotype
+AN.mem.2<- lmer(Ratio_AMPA_NMDA ~ Age + Genotype + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE)
+  summary(AN.mem.2)
+
+#model 3 area, layer, age, genotype, sex
+  AN.mem.3<- lmer(Ratio_AMPA_NMDA ~ Age + Genotype + Sex + (1 + 1|Mouse) , data=ATN_pyr, REML=FALSE) 
+  summary(AN.mem.3)
+
+  
+#Anova to compare null and experimental models  
+#if( require("xtable") ){
+ # ft1 <- xtable_to_flextable(xtable(anova(AN.mem.1, AN.null), hline.after = c(1)))%>%
+#    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+#    add_header_lines(values="ANOVA model comparison")%>%
+#    colformat_double(j=9, digits=3)
+#  ft1   
+#}
+  
+#Anova to compare null and experimental models  
+#if( require("xtable") ){
+#  ft1 <- xtable_to_flextable(xtable(anova(AN.mem.3, AN.mem.2, AN.null), hline.after = c(1)))%>%
+  #  set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+ #   add_header_lines(values="ANOVA model comparison")%>%
+#    colformat_double(j=9, digits=3)
+#  ft1   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#if( require("xtable") ){
+#   ft2 <- xtable_to_flextable(xtable(anova(AN.mem.3, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#     set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#     add_header_lines(values="ANOVA Type III effects")%>%
+#     colformat_double(j=7, digits=3)
+#ft2   
+#}
+
+#create predictor label list
+predictor_labels_table<- list("Area: gRSC","Layer: Deep")
+predictor_labels<- list("Layer: Deep", "Area: gRSC" )
+
+#plot Ratio_AMPA_NMDA effect sizes
+sjPlot:: plot_model(AN.mem.3, 
+                   # axis.labels=c(predictor_labels),
+                   show.values=TRUE,
+                   show.p=TRUE, 
+                   title="Effect of predictors on AN magnitude",
+                   vline.color="black")+
+                   theme_classic2()
+
+#create formatted table of effect sizes
+AN.table.1<-
+sjPlot:: tab_model(AN.mem.1,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="AN magnitude")
+AN.table.2<-
+sjPlot:: tab_model(AN.mem.2,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="AN magnitude")
+AN.table.3<-
+  sjPlot:: tab_model(AN.mem.3,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   # pred.labels=c("Intercept", predictor_labels_table),
+                   dv.labels="AN magnitude")
+
+tab_model(AN.mem.1,AN.mem.2,AN.mem.3,
+          pred.labels = c("Intercept", "Area: gRSC", "Layer: Deep","Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+
+#plot Ratio_AMPA_NMDA data box plots
+AN.plot<-        
+ATN_pyr%>%
+  ggplot(aes(x=Age, y=Ratio_AMPA_NMDA, fill=Genotype))+
+    geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+   geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+    facet_grid(Area ~ Layer, scales="free_x")+
+    labs(y = "AMPA/NMDA", x="Age (months)")+
+    scale_x_discrete(labels=(c("3","6","9")))+
+#    stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+    theme_classic2()+
+    theme(axis.title = element_text(size=12), axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+    theme(legend.title = element_text(size=12), legend.text = element_text(size=12))+
+    theme(strip.text = element_text(size=12))+
+    theme(panel.border=element_rect(color = "gray45", fill = NA, size = 1))
+
+ggsave(file="AMPA_NMDA boxplot.pdf", plot=AN.plot, height=6, width=10)
+```
+read in PPR transposed file
+```{r}
+#set working directory
+#setwd("C:/Users/gm440/OneDrive - University of Exeter/U drive/Ephys data analysis/R")
+
+#read in PPR_ISI restructered data SPSS file to data frame
+PPR1<-read.spss("J20_PPR_ISI.sav", use.value.label=TRUE, to.data.frame=TRUE)
+
+#filter out interneurons
+PPR1_pyr<-PPR1%>%
+  filter(Celltype == 'Pyramidal') 
+#list repeated measure factors
+
+PPR1_pyr$Index1<- factor(PPR1_pyr$Index1, 
+                levels=c("PPR1", "PPR2", "PPR3", "PPR4", "PPR5", "PPR6", "PPR7"),
+                labels=c("10 ms", "17 ms", "51ms", "100 ms", "170 ms", "510 ms", "1000 ms"))
+
+PPR1_pyr<- 
+  PPR1_pyr%>% rename(IPI = Index1, 
+                    PPR = PPR_ISI)
+```
+PPR mixed model analysis
+```{r}
+#null model
+PPR1.null<- lmer(PPR ~ as.factor(IPI) + (1 + 1|Mouse), data = PPR1_pyr) #set factors and predictors
+summary(PPR1.null)
+
+#Model 1 area, layer
+PPR1.mem.1<- lmer(PPR ~ as.factor(IPI) + Area + Layer + (1|Mouse), data = PPR1_pyr)
+  summary(PPR1.mem.1)
+#Model 2 area, layer, age, genotype
+PPR1.mem.2<- lmer(PPR ~ as.factor(IPI) + Area + Layer + Age + Genotype + (1|Mouse), data = PPR1_pyr)
+  summary(PPR1.mem.2)
+#Model 3 area, layer, age, genotype, sex
+PPR1.mem.3<- lmer(PPR ~ as.factor(IPI) + Area + Layer + Age + Genotype + Sex + (1|Mouse), data = PPR1_pyr)
+  summary(PPR1.mem.3)
+
+#Anova to compare null and experimental models  
+#if( require("xtable") ){
+#  ft1 <- xtable_to_flextable(xtable(anova(PPR1.mem.3,PPR1.mem.2,PPR1.mem.1,PPR1.null), hline.after = c(1)))%>%
+#    set_header_labels("npar"="Parameter n", "logLik"="log Liklihood", "deviance"="Deviance", "Chisq"="X2", "Pr..Chisq."="p value")%>%
+#    add_header_lines(values="ANOVA model comparison")%>%
+#    colformat_double(j=9, digits=3)
+#  ft1   
+#}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#if( require("xtable") ){
+#  ft2 <- xtable_to_flextable(xtable(anova(PPR1.mem.3, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#    set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#    add_header_lines(values="ANOVA Type III effects")%>%
+#    colformat_double(j=7, digits=3)
+#  ft2   
+#}
+  #get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+#if( require("xtable") ){
+#  ft2 <- xtable_to_flextable(xtable(anova(PPR1.mem.1, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+#    set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", #"Pr..F."="p value")%>%
+#    add_header_lines(values="ANOVA Type III effects")%>%
+#    colformat_double(j=7, digits=3)
+#  ft2   
+#}
+
+  #plot effect sizes
+sjPlot::plot_model(PPR1.mem.3, 
+                   show.values=TRUE,
+                   show.p=TRUE, 
+                   title="Effect of predictors on PPR",
+                   vline.color="black")+
+                   theme_sjplot()
+
+#create formatted table of effect sizes
+#Model 1
+sjPlot:: tab_model(PPR1.mem.1,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   string.stat="t",
+                   dv.labels="Effect of predictors on PPR")
+#Model 2
+sjPlot:: tab_model(PPR1.mem.2,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   string.stat="t",
+                   dv.labels="Effect of predictors on PPR")
+#Model 3
+sjPlot:: tab_model(PPR1.mem.3,
+                   show.re.var=TRUE,
+                   show.stat=TRUE,
+                   collapse.ci=TRUE,
+                   string.stat="t",
+                   dv.labels="Effect of predictors on PPR")
+
+#PPR predictor label list
+PPR_labels<- list("PPR: 17 ms", "PPR: 51 ms", "PPR: 100 ms", "PPR: 170 ms", "PPR: 510 ms", "PPR: 1000 ms",  "Layer: Deep", "Area: gRSC", "Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female")
+
+tab_model(PPR1.mem.1,PPR1.mem.2,PPR1.mem.3,
+          pred.labels = c("Intercept","PPR: 17 ms", "PPR: 51 ms", "PPR: 100 ms", "PPR: 170 ms", "PPR: 510 ms", "PPR: 1000 ms",  "Layer: Deep", "Area: gRSC", "Age: 6 months", "Age: 9 months", "Genotype: Tg", "Sex: Female"),
+          dv.labels = c("Model 1", "Model 2", "Model 3"),
+          show.re.var=TRUE,
+          show.stat=TRUE,
+          collapse.ci=TRUE,
+          string.stat = "t")
+
+xscalelist<- list("10", "17", "51", "100", "170", "510", "1000")
+#plot
+PPR.plot<-
+PPR1_pyr%>%
+  ggplot(aes(x=IPI, y=PPR, fill=Genotype))+
+   geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+   geom_point(colour="black", size = 0.2, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+  facet_grid(Age ~ Area*Layer, scales="fixed")+
+  geom_hline(yintercept=1.0,linetype="dashed")+
+  ylim(0,2)+
+  scale_x_discrete(labels=(xscalelist))+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(x= "IPI (ms)", y = "PPR")+
+  theme_classic2()+
+  theme(axis.title=element_text(size=12),
+        axis.text.y=element_text(size=12),
+        axis.text.x=element_text(size=12, angle=45, vjust=0.7),
+        strip.text=element_text(size=12),
+        legend.title=element_text(size=12),
+        legend.text=element_text(size=12))+
+  theme(panel.border=element_rect(color = "gray45", fill = NA, size = 1))
+
+ggsave(file="J20 PPR boxplot.pdf", plot=PPR.plot, height=6, width=10)
+```
+```{r}
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+if( require("xtable") ){
+  ft2 <- xtable_to_flextable(xtable(anova(PPR1.null, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+    set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", "Pr..F."="p value")%>%
+    add_header_lines(values="ANOVA Type III effects")%>%
+    colformat_double(j=7, digits=3)
+  ft2   
+}
+
+#get ANOVA table of Type III tests with Satterthwaite approximation for experimental model
+if( require("xtable") ){
+  ft2 <- xtable_to_flextable(xtable(anova(PPR1.mem.1, type = "marginal", adjustSigma = F), hline.after = c(1)))%>%
+    set_header_labels("Sum.Sq"="Sum of Squares", "Mean.Sq"="Mean of Squares", "NumDF"="Numerator df", "DenDF"="Denominator df", "F.value"="F", "Pr..F."="p value")%>%
+    add_header_lines(values="ANOVA Type III effects")%>%
+    colformat_double(j=7, digits=3)
+  ft2   
+}
+```
+
+
+counts and values
+```{r}
+ATN_pyr%>% group_by(Age,Genotype,Area,Layer)%>% tally()
+
+ATN_pyr%>% filter(Ratio_AMPA_NMDA != 'NA')%>% group_by(Age,Genotype,Area,Layer)%>% tally()
+
+ATN_pyr%>% filter(PPR2 != 'NA')%>% group_by(Age,Genotype,Area,Layer)%>% tally()
+```
+

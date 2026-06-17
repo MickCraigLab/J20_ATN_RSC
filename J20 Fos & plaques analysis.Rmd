@@ -1,0 +1,499 @@
+---
+title: "J20 Fos"
+output: html_notebook
+---
+Libraries
+```{r}
+library(ggplot2)    #plot graphs
+library(ggpubr)     #edit graphs with theme()
+library(tidyverse)  #group of packages includes dplyr etc
+library(foreign)    #read in SPSS files
+library(svglite)    #export grobs as SVG files
+library(rstatix)    #allows for pipeline stats
+library(afex)       #mixed ANOVA
+```
+```{r}
+# Colour palette define
+GenotypeColour <- c(
+  "Tg" = "#EA2376",
+  "WT" = "#6D47B4"
+)
+
+```
+Read in SPSS file
+```{r}
+#set working directory
+setwd("~/Library/CloudStorage/Dropbox/Manuscripts/ATN to RSC J20/J20 data/R scripts")
+
+# Read in data file --------------------------------------------
+
+#read in SPSS file to data frame
+Fos<-read.spss("J20_Fos_all.sav", use.value.label=TRUE, to.data.frame=TRUE)
+
+#transposed file for mixed ANOVA
+Fos.tr<- read.spss("J20_Fos_transposed.sav", use.value.label=TRUE, to.data.frame=TRUE)
+```
+
+```{r}
+#calculate Fos average over entire RSC if needed
+library(dplyr)
+Fos<- mutate(Fos, RSC=(dRSC+gRSC)/2)
+
+#normality tests
+hist(Fos$RSC)
+Fos%>% group_by(Age,Genotype)%>% shapiro_test(dRSC)
+Fos%>% group_by(Age,Genotype)%>% shapiro_test(gRSC)
+
+#descriptive statistics
+Fos%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(dRSC), SD=sd(dRSC), median=median(dRSC),IQR1=quantile(dRSC,0.25),IQR3=quantile(dRSC,0.75))
+Fos%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(gRSC), SD=sd(gRSC), median=median(gRSC),IQR1=quantile(gRSC,0.25),IQR3=quantile(gRSC,0.75))
+
+```
+Mixed ANOVA for dRSC and gRSC
+```{r}
+#mixed 3-way ANOVA: WS - RSC sub-region, BS - Age and Genotype
+Fos_mixaov <- aov_ez(id="ID", dv="RSC", data=Fos.tr, between=c("Age","Genotype"), within="Subregion")
+summary(Fos_mixaov)
+
+#mixed 4-way ANOVA: WS - RSC sub-region, BS - Age, Genotype and Sex
+Fos_mixaov_sex <- aov_ez(id="ID", dv="RSC", data=Fos.tr, between=c("Age","Genotype","Sex"), within="Subregion")
+summary(Fos_mixaov_sex)
+
+#post hoc tests
+Fos%>% group_by(Genotype)%>% pairwise_t_test(dRSC ~ Age, p.adjust.method="BH")
+Fos%>% group_by(Genotype)%>% pairwise_t_test(gRSC ~ Age, p.adjust.method="BH")
+Fos%>% pairwise_t_test(dRSC ~ Age, p.adjust.method="BH")
+Fos%>% pairwise_t_test(gRSC ~ Age, p.adjust.method="BH")
+
+#boxplot
+mix.plot<- 
+  Fos.tr%>%
+  ggplot(aes(x=Age, y=RSC, fill=Genotype))+
+ geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency+
+  geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(y = "Fos+ cells/mm2", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12),
+        strip.text=element_text(size=12), 
+        legend.title=element_text(size=12), legend.text=element_text(size=12))
+
+#save as PDF file
+ggsave(file="RSC Fos boxplot.pdf", plot=mix.plot, height=3, width=7)
+```
+
+ANOVA for other regions
+```{r}
+#normality tests
+Fos%>% group_by(Age,Genotype)%>% shapiro_test(CA1)
+Fos%>% group_by(Age,Genotype)%>% shapiro_test(VC)
+Fos%>% group_by(Age,Genotype)%>% shapiro_test(EC)
+
+#CA1 2-way ANOVA
+CA1.aov <- aov(CA1 ~ Genotype + Age + Genotype*Age, data=Fos)
+summary(CA1.aov)
+Fos%>% pairwise_t_test(CA1 ~ Age, p.adjust.method="BH")
+Fos%>% group_by(Age)%>% pairwise_t_test(CA1 ~ Genotype, p.adjust.method="BH")
+
+#CA1 boxplot
+  CA1.Fos.plot<- 
+    Fos%>%
+    ggplot(aes(x=Age, y=CA1, fill=Genotype))+
+    geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency+
+    geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+    scale_fill_manual(values=GenotypeColour)+
+    labs(y = "Fos+ cells/mm2", x= "Age (months)")+
+    scale_x_discrete(labels=c("3","6","9"))+
+    theme_classic2()+
+    theme(axis.title=element_text(size=12), axis.text.x=element_text(size=12), axis.text.y=element_text(size=12))+
+    theme(legend.position="none")
+
+#VC 2-way ANOVA
+VC.aov <- aov(VC ~ Genotype + Age + Genotype*Age, data=Fos)
+summary(VC.aov)
+Fos%>% pairwise_t_test(VC ~ Age, p.adjust.method="BH")
+
+#VC boxplot
+VC.Fos.plot<- 
+  Fos%>%
+  ggplot(aes(x=Age, y=gRSC, color=Genotype))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(jitter.width=0.0))+
+  #stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(y = "Fos+ cells/mm2", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=20), axis.text.x=element_text(size=18), axis.text.y=element_text(size=16))+
+  theme(legend.position="none")
+
+#EC 2-way ANOVA
+EC.aov <- aov(EC ~ Genotype + Age + Genotype*Age, data=Fos)
+summary(EC.aov)
+Fos%>% pairwise_t_test(EC ~ Age, p.adjust.method="BH")
+Fos%>% group_by(Age)%>% pairwise_t_test(EC ~ Genotype, p.adjust.method = "BH")
+
+#EC boxplot
+  EC.Fos.plot<- 
+    Fos%>%
+    ggplot(aes(x=Age, y=EC, fill=Genotype))+
+    geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency+
+    geom_point(colour="black", size = 0.5, position=position_jitterdodge())+
+    scale_fill_manual(values=GenotypeColour)+
+    labs(y = "Fos+ cells/mm2", x= "Age (months)")+
+    scale_x_discrete(labels=c("3","6","9"))+
+    theme_classic2()+
+    theme(axis.title=element_text(size=12), axis.text.x=element_text(size=12), axis.text.y=element_text(size=12))+
+    theme(legend.position="none")
+#descriptive statistics
+  
+Fos%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(CA1), SD=sd(CA1), median=median(CA1),IQR1=quantile(CA1,0.25),IQR3=quantile(CA1,0.75))
+Fos%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(EC), SD=sd(EC), median=median(EC),IQR1=quantile(EC,0.25),IQR3=quantile(EC,0.75))
+
+#save boxplots and legend as SVG files
+ggsave(file="CA1 Fos boxplot.pdf", plot=CA1.Fos.plot,height=3, width=3.5)
+ggsave(file="EC Fos boxplot.pdf", plot=EC.Fos.plot, height=3, width=3.5)
+#ggsave(file="genotype legend.pdf", plot=legend)
+```
+
+CA1 and EC 4-way ANOVA with sex included as IV
+```{r}
+CA1.aov_sex <- aov(CA1 ~ Genotype + Age + Sex + Genotype*Age + Sex*Age + Sex*Genotype, data=Fos)
+summary(CA1.aov_sex)
+
+EC.aov_sex <- aov(EC ~ Genotype + Age + Sex + Genotype*Age + Sex*Age + Sex*Genotype, data=Fos)
+summary(EC.aov_sex)
+```
+AmyloGlo analysis: read in SPSS files
+```{r}
+#read in SPSS file to data frame
+AG<-read.spss("J20_AmyloGlo_final.sav", use.value.label=TRUE, to.data.frame=TRUE)
+
+#transposed file for mixed ANOVA
+AG.tr<- read.spss("J20_AmyloGlo_transposed.sav", use.value.label=TRUE, to.data.frame=TRUE)
+```
+RSC % area covered analysis
+```{r}
+#3-way mixed ANOVA
+AG_mixaov <- aov_ez(id="ID", dv="RSC", data=AG.tr, between=c("Age","Genotype"), within="Subregion")
+summary(AG_mixaov)
+
+#post hoc tests
+AG%>% group_by(Genotype)%>% pairwise_t_test(dRSC ~ Age, p.adjust.method="BH")
+AG%>% group_by(Genotype)%>% pairwise_t_test(gRSC ~ Age, p.adjust.method="BH")
+
+#4-way mixed ANOVA with sex included as IV
+AG_mixaov_sex <- aov_ez(id="ID", dv="RSC", data=AG.tr, between=c("Age","Genotype","Sex"), within="Subregion")
+summary(AG_mixaov_sex)
+
+#RSC %area covered boxplot
+AG.mix.plot<- 
+  AG.tr%>%
+  ggplot(aes(x=Age, y=RSC_av, fill=Genotype))+
+  geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+# geom_col()+
+   geom_point(colour="black", size = 1, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(y = "Area covered with plaque (%)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12),
+        strip.text=element_text(size=12), 
+        legend.position="right")
+
+AG.mix.plot2<- 
+  AG.tr%>%
+  ggplot(aes(x=Age, y=RSC_av, fill=Genotype))+
+  geom_boxplot(outlier.shape=NA, alpha = 0.8)+  # alpha for transparency
+# geom_col()+
+   geom_point(colour="black", size = 1, position=position_jitterdodge())+
+  scale_fill_manual(values=GenotypeColour)+
+  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(y = "Area covered with plaque (µm2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12),
+        strip.text=element_text(size=12), 
+        legend.position="none")
+
+
+#descriptive statistics
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(dRSC), SD=sd(dRSC), median=median(dRSC),IQR1=quantile(dRSC,0.25),IQR3=quantile(dRSC,0.75))
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(gRSC), SD=sd(gRSC), median=median(gRSC),IQR1=quantile(gRSC,0.25),IQR3=quantile(gRSC,0.75))
+
+#save boxplot as SVG
+ggsave(file="RSC AG boxplot.pdf", plot=AG.mix.plot, height=3, width=7)
+ggsave(file="RSC AG boxplot area.pdf", plot=AG.mix.plot2, height=3, width=5)
+```
+RSC average plaque size analysis
+```{r}
+#filter out WT mice as previous analysis showed WT mice displauyed no plaques so would just be an ANOVA on zero data which would throw the stats
+AG.Tg.tr <- filter(AG.tr, Genotype=="Tg")
+
+#2-way mixed ANOVA
+AG_mixaov_av <- aov_ez(id="ID", dv="RSC_av", data=AG.Tg.tr, between="Age", within="Subregion")
+summary(AG_mixaov_av)
+#post hoc tests
+AG%>% pairwise_t_test(dRSC_av ~ Age, p.adjust.method="BH")
+AG%>% pairwise_t_test(gRSC_av ~ Age, p.adjust.method="BH")
+
+#3-way mixed ANOVA with sex included as IV
+AG_mixaov_av_sex <- aov_ez(id="ID", dv="RSC_av", data=AG.Tg.tr, between=c("Age","Sex"), within="Subregion")
+summary(AG_mixaov_av_sex)
+
+#RSC plaque size boxplot
+AG.mix.plot.av<- 
+  AG.tr%>%
+  ggplot(aes(x=Age, y=RSC_av, fill=Genotype))+
+  geom_boxplot()+
+  scale_fill_manual(values=GenotypeColour)+
+  geom_point(col="black")+
+  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", col="#00BFC4", position=position_dodge())+
+  labs(y = "Average plaque area (µm2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=12), 
+        legend.title=element_text(size=12), legend.text=element_text(size=12))
+
+#descriptive statistics
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(dRSC_av), SD=sd(dRSC_av), median=median(dRSC_av),IQR1=quantile(dRSC_av,0.25),IQR3=quantile(dRSC_av,0.75))
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(gRSC_av), SD=sd(gRSC_av), median=median(gRSC_av),IQR1=quantile(gRSC_av,0.25),IQR3=quantile(gRSC_av,0.75))
+
+#save as SVG file
+ggsave(file="RSC AG area boxplot.pdf", plot=AG.mix.plot.av, height=3, width=7)
+
+#unnecessary, just wanted to look at graphically separating by age
+  AG.Tg.tr%>%
+  ggplot(aes(x=Age, y=RSC_av, color=Sex))+
+  geom_boxplot()+
+  geom_point()+
+  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Sex), width = .7, linetype = "dashed", col="#00BFC4", position=position_dodge())+
+  labs(y = "Average surface area (um2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=30), axis.text.y=element_text(size=30),
+        axis.title=element_text(size=36),
+        strip.text=element_text(size=30), 
+        legend.title=element_text(size=30), legend.text=element_text(size=30))
+```
+
+CA1 % area covered analysis
+```{r}
+#CA1 2-way ANOVA
+CA1.AG.aov <- aov(CA1 ~ Genotype + Age + Genotype*Age, data=AG)
+summary(CA1.AG.aov)
+AG%>% pairwise_t_test(CA1 ~ Age, p.adjust.method="BH")
+
+#CA1 %area covered boxplot
+CA1.AG.plot<- 
+  AG%>%
+  ggplot(aes(x=Age, y=CA1, fill=Genotype))+
+  geom_boxplot()+
+  scale_fill_manual(values=GenotypeColour)+
+   geom_point(colour="black", size = 1, position=position_jitterdodge())+
+#  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", col="#00BFC4", position=position_dodge())+
+  labs(y = "Average plaque area (%)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=12), 
+        legend.title=element_text(size=12), legend.text=element_text(size=12))
+
+
+#descriptive statistics
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(CA1), SD=sd(CA1), median=median(CA1),IQR1=quantile(CA1,0.25),IQR3=quantile(CA1,0.75))
+
+#save as SVG file
+ggsave(file="CA1 AG boxplot.pdf", plot=CA1.AG.plot, height=3, width=7)
+```
+CA1 average plaque size analysis
+```{r}
+#filter out WT mice
+AG.Tg <- filter(AG, Genotype=="Tg")
+
+#CA1 1-way ANOVA
+CA1.AG.aov_av <- aov(CA1_av ~ Age, data=AG.Tg)
+summary(CA1.AG.aov_av)
+AG.Tg%>% pairwise_t_test(CA1_av ~ Age, p.adjust.method="BH")
+
+#CA1 plaque size boxplot
+CA1.AG.plot.av<- 
+  AG.Tg%>%
+  ggplot(aes(x=Age, y=CA1_av))+
+  geom_boxplot(col="#00BFC4")+
+  geom_point(col="#00BFC4")+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", col="#00BFC4")+
+  labs(y = "Average surface area (um2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=36), axis.text.x=element_text(size=30), axis.text.y=element_text(size=30))+
+  theme(legend.position="none")
+
+#descriptive statistics
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(CA1_av), SD=sd(CA1_av), median=median(CA1_av),IQR1=quantile(CA1_av,0.25),IQR3=quantile(CA1_av,0.75))
+
+#save as SVG file
+ggsave(file="CA1 AG area boxplot.pdf", plot=CA1.AG.plot.av, height=10, width=8)
+```
+Check sex is not a factor
+```{r}
+#3-way ANOVA with sex included as IV
+CA1.AG.aov_sex <- aov(CA1 ~ Genotype + Age + Sex + Genotype*Age + Sex*Age + Sex*Genotype + Age*Genotype*Sex, data=AG)
+summary(CA1.AG.aov_sex)
+
+CA1.AG.aov_av_sex <- aov(CA1_av ~ Age + Sex + Sex*Age, data=AG.Tg)
+summary(CA1.AG.aov_av_sex)
+
+#boxplots
+  AG%>%
+  ggplot(aes(x=Age, y=CA1, fill=Genotype))+
+  geom_boxplot()+
+  scale_fill_manual(values=GenotypeColour)+
+   geom_point(colour="black", size = 1, position=position_jitterdodge())+
+  facet_wrap(vars(Sex), ncol=2, scales="fixed")+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(y = "% Area", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=36), axis.text.x=element_text(size=30), axis.text.y=element_text(size=30))+
+  theme(legend.position="none")
+  
+  AG.Tg%>%
+  ggplot(aes(x=Age, y=CA1_av, color=Sex))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(jitter.width=0.0))+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Sex), width = .7, linetype = "dashed")+
+  labs(y = "Average surface area (um2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=36), axis.text.x=element_text(size=30), axis.text.y=element_text(size=30))+
+  theme(legend.position="none")
+```
+
+
+EC % area covered analysis
+```{r}
+#EC 2-way ANOVA
+EC.AG.aov <- aov(lEC ~ Genotype + Age + Genotype*Age, data=AG)
+summary(EC.AG.aov)
+#post hoc tests
+AG%>% pairwise_t_test(lEC ~ Age, p.adjust.method="BH")
+
+#EC %area covered boxplot
+EC.AG.plot<- 
+  AG%>%
+  ggplot(aes(x=Age, y=lEC, fill=Genotype))+
+  geom_boxplot()+
+  scale_fill_manual(values=GenotypeColour)+
+   geom_point(colour="black", size = 1, position=position_jitterdodge())+
+#  facet_wrap(vars(Subregion), ncol=2, scales="fixed")+
+#  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", col="#00BFC4", position=position_dodge())+
+  labs(y = "Average plaque area (%)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.text.x=element_text(size=12), axis.text.y=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(size=12), 
+        legend.title=element_text(size=12), legend.text=element_text(size=12))
+
+
+#descriptive stats
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(lEC), SD=sd(lEC), median=median(lEC),IQR1=quantile(lEC,0.25),IQR3=quantile(lEC,0.75))
+
+#save as SVG file
+ggsave(file="EC AG boxplot.pdf", plot=EC.AG.plot, height=3, width=7)
+```
+lEC average plaque size analysis
+```{r}
+#EC 1-way ANOVA
+EC.AG.aov_av <- aov(lEC_av ~ Age, data=AG.Tg)
+summary(EC.AG.aov_av)
+#post hoc tests
+AG.Tg%>% pairwise_t_test(lEC_av ~ Age, p.adjust.method="BH")
+
+#EC plaque size boxplot
+EC.AG.plot.av<- 
+  AG.Tg%>%
+  ggplot(aes(x=Age, y=lEC_av))+
+  geom_boxplot(col="#00BFC4")+
+  geom_point(col="#00BFC4")+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = 0.7, linetype = "dashed", col="#00BFC4")+
+  labs(y = "Average surface area (um2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=36), axis.text.x=element_text(size=30), axis.text.y=element_text(size=30))+
+  theme(legend.position="none")
+
+AG%>%
+  group_by(Age,Genotype)%>%
+  summarise(mean=mean(lEC_av), SD=sd(lEC_av), median=median(lEC_av),IQR1=quantile(lEC_av,0.25),IQR3=quantile(lEC_av,0.75))
+
+ggsave(file="EC AG area boxplot.svg", plot=CA1.AG.plot.av, height=10, width=8)
+```
+
+```{r}
+#3-way ANOVA with sex included as factor
+EC.AG.aov_sex <- aov(lEC ~ Genotype + Age + Sex + Genotype*Age + Sex*Age + Sex*Genotype + Age*Genotype*Sex, data=AG)
+summary(EC.AG.aov_sex)
+
+#2-way ANOVA with sex included as factor
+EC.AG.aov_av_sex <- aov(lEC_av ~ Age + Sex + Sex*Age, data=AG.Tg)
+summary(EC.AG.aov_av_sex)
+
+  AG%>%
+  ggplot(aes(x=Age, y=lEC, color=Genotype))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(jitter.width=0.0))+
+  facet_wrap(vars(Sex), ncol=2, scales="fixed")+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Genotype), width = .7, linetype = "dashed", position=position_dodge())+
+  labs(y = "% Area", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=36), axis.text.x=element_text(size=30), axis.text.y=element_text(size=30))+
+  theme(legend.position="none")
+  
+  AG.Tg%>%
+  ggplot(aes(x=Age, y=lEC_av, color=Sex))+
+  geom_boxplot()+
+  geom_point(position=position_jitterdodge(jitter.width=0.0))+
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y.., group=Sex), width = .7, linetype = "dashed")+
+  labs(y = "Average surface area (um2)", x= "Age (months)")+
+  scale_x_discrete(labels=c("3","6","9"))+
+  theme_classic2()+
+  theme(axis.title=element_text(size=36), axis.text.x=element_text(size=30), axis.text.y=element_text(size=30))+
+  theme(legend.position="none")
+```
+
